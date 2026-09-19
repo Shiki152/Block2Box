@@ -27,15 +27,22 @@ jobs:
       - name: Recuperer le code
         uses: actions/checkout@v4
 
-      - name: Dezipper Block2Box.zip (cote serveur GitHub)
+      - name: Dezipper l'archive (cote serveur GitHub)
         run: |
-          if [ ! -f Block2Box.zip ]; then
-            echo "Erreur : Block2Box.zip introuvable a la racine du depot."
+          echo "Contenu de la racine du depot :"
+          ls -la
+
+          ZIP_FILE="$(find . -maxdepth 1 -iname '*.zip' | head -n1)"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "Erreur : aucun fichier .zip trouve a la racine du depot (voir la liste ci-dessus)."
             exit 1
           fi
-          unzip -oq Block2Box.zip -d .
+          echo "Archive trouvee : $ZIP_FILE"
+          unzip -oq "$ZIP_FILE" -d .
+
           if [ ! -f Block2Box/pom.xml ]; then
-            echo "Erreur : pom.xml introuvable apres decompression (structure de zip inattendue)."
+            echo "Erreur : Block2Box/pom.xml introuvable apres decompression. Contenu obtenu :"
+            find . -maxdepth 3 -not -path './.git*'
             exit 1
           fi
 
