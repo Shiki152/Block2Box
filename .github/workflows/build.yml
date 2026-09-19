@@ -1,0 +1,71 @@
+name: Build Block2Box
+
+# Se declenche a chaque push/PR sur main, et manuellement via l'onglet Actions.
+# Un tag "v*" (ex: v1.0.0) declenche en plus la creation d'une Release GitHub avec le jar attache.
+#
+# Particularite de ce workflow : le code source n'est PAS commite fichier par fichier,
+# il reste sous forme d'une archive "Block2Box.zip" a la racine du depot. C'est GitHub
+# Actions (donc les serveurs de GitHub, pas ton ordinateur) qui la dezippe avant de
+# compiler avec Maven.
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # necessaire pour que le job puisse publier une Release GitHub
+
+jobs:
+  build:
+    name: Build (Maven / JDK 21)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Recuperer le code
+        uses: actions/checkout@v4
+
+      - name: Dezipper Block2Box.zip (cote serveur GitHub)
+        run: |
+          if [ ! -f Block2Box.zip ]; then
+            echo "Erreur : Block2Box.zip introuvable a la racine du depot."
+            exit 1
+          fi
+          unzip -oq Block2Box.zip -d .
+          if [ ! -f Block2Box/pom.xml ]; then
+            echo "Erreur : pom.xml introuvable apres decompression (structure de zip inattendue)."
+            exit 1
+          fi
+
+      - name: Installer le JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: Block2Box/pom.xml
+
+      - name: Compiler avec Maven
+        working-directory: Block2Box
+        run: mvn -B clean package --no-transfer-progress
+
+      - name: Recuperer le nom du jar genere
+        id: jar
+        working-directory: Block2Box
+        run: echo "path=Block2Box/$(find target -maxdepth 1 -name '*.jar' ! -name '*-sources.jar' | head -n1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publier le jar comme artifact du workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: Block2Box
+          path: ${{ steps.jar.outputs.path }}
+          if-no-files-found: error
+
+      - name: Creer une Release GitHub (uniquement sur tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.jar.outputs.path }}
+          generate_release_notes: true
