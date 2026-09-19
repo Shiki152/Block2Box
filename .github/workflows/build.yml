@@ -27,18 +27,26 @@ jobs:
       - name: Recuperer le code
         uses: actions/checkout@v4
 
-      - name: Dezipper l'archive (cote serveur GitHub)
+      - name: Dezipper l'archive (cote serveur GitHub, meme si imbriquee)
         run: |
           echo "Contenu de la racine du depot :"
           ls -la
 
-          ZIP_FILE="$(find . -maxdepth 1 -iname '*.zip' | head -n1)"
-          if [ -z "$ZIP_FILE" ]; then
-            echo "Erreur : aucun fichier .zip trouve a la racine du depot (voir la liste ci-dessus)."
-            exit 1
-          fi
-          echo "Archive trouvee : $ZIP_FILE"
-          unzip -oq "$ZIP_FILE" -d .
+          # Dezippe en boucle tout .zip trouve a la racine, et supprime le zip
+          # une fois traite. Gere le cas ou un zip contient lui-meme un autre
+          # zip (ex: le zip de livraison contenant Block2Box.zip a l'interieur).
+          for i in 1 2 3 4 5; do
+            if [ -f Block2Box/pom.xml ]; then
+              break
+            fi
+            ZIP_FILE="$(find . -maxdepth 1 -iname '*.zip' | head -n1)"
+            if [ -z "$ZIP_FILE" ]; then
+              break
+            fi
+            echo "Decompression de : $ZIP_FILE"
+            unzip -oq "$ZIP_FILE" -d .
+            rm -f "$ZIP_FILE"
+          done
 
           if [ ! -f Block2Box/pom.xml ]; then
             echo "Erreur : Block2Box/pom.xml introuvable apres decompression. Contenu obtenu :"
