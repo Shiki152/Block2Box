@@ -27,16 +27,17 @@ jobs:
       - name: Recuperer le code
         uses: actions/checkout@v4
 
-      - name: Dezipper l'archive (cote serveur GitHub, meme si imbriquee)
+      - name: Dezipper l'archive et localiser le projet
+        id: locate
         run: |
           echo "Contenu de la racine du depot :"
           ls -la
 
-          # Dezippe en boucle tout .zip trouve a la racine, et supprime le zip
-          # une fois traite. Gere le cas ou un zip contient lui-meme un autre
-          # zip (ex: le zip de livraison contenant Block2Box.zip a l'interieur).
+          # Dezippe en boucle tout .zip trouve a la racine (gere aussi un zip
+          # imbrique dans un autre), jusqu'a trouver un pom.xml quelque part.
           for i in 1 2 3 4 5; do
-            if [ -f Block2Box/pom.xml ]; then
+            POM="$(find . -not -path './.git/*' -name pom.xml | head -n1)"
+            if [ -n "$POM" ]; then
               break
             fi
             ZIP_FILE="$(find . -maxdepth 1 -iname '*.zip' | head -n1)"
@@ -48,11 +49,16 @@ jobs:
             rm -f "$ZIP_FILE"
           done
 
-          if [ ! -f Block2Box/pom.xml ]; then
-            echo "Erreur : Block2Box/pom.xml introuvable apres decompression. Contenu obtenu :"
+          POM="$(find . -not -path './.git/*' -name pom.xml | head -n1)"
+          if [ -z "$POM" ]; then
+            echo "Erreur : aucun pom.xml trouve apres decompression. Contenu obtenu :"
             find . -maxdepth 3 -not -path './.git*'
             exit 1
           fi
+
+          PROJECT_DIR="$(dirname "$POM")"
+          echo "Projet Maven trouve dans : $PROJECT_DIR"
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Installer le JDK 21 (Temurin)
         uses: actions/setup-java@v4
@@ -60,16 +66,16 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-          cache-dependency-path: Block2Box/pom.xml
+          cache-dependency-path: ${{ steps.locate.outputs.dir }}/pom.xml
 
       - name: Compiler avec Maven
-        working-directory: Block2Box
+        working-directory: ${{ steps.locate.outputs.dir }}
         run: mvn -B clean package --no-transfer-progress
 
       - name: Recuperer le nom du jar genere
         id: jar
-        working-directory: Block2Box
-        run: echo "path=Block2Box/$(find target -maxdepth 1 -name '*.jar' ! -name '*-sources.jar' | head -n1)" >> "$GITHUB_OUTPUT"
+        working-directory: ${{ steps.locate.outputs.dir }}
+        run: echo "path=${{ steps.locate.outputs.dir }}/$(find target -maxdepth 1 -name '*.jar' ! -name '*-sources.jar' | head -n1)" >> "$GITHUB_OUTPUT"
 
       - name: Publier le jar comme artifact du workflow
         uses: actions/upload-artifact@v4
